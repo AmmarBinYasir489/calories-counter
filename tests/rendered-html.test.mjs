@@ -19,6 +19,7 @@ test("ships the Supabase-backed Personal Foods workflow", async () => {
     storageSchema,
     mealLogsSchema,
     profilesSchema,
+    globalStyles,
     envExample,
     packageJson,
   ] =
@@ -38,6 +39,7 @@ test("ships the Supabase-backed Personal Foods workflow", async () => {
       readFile(new URL("../database/supabase_meal_images.sql", import.meta.url), "utf8"),
       readFile(new URL("../database/supabase_meal_logs.sql", import.meta.url), "utf8"),
       readFile(new URL("../database/supabase_profiles.sql", import.meta.url), "utf8"),
+      readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
       readFile(new URL("../.env.example", import.meta.url), "utf8"),
       readFile(new URL("../package.json", import.meta.url), "utf8"),
     ]);
@@ -50,7 +52,7 @@ test("ships the Supabase-backed Personal Foods workflow", async () => {
   assert.match(dashboard, /meal-images/);
   assert.match(analysisRoute, /detectImageMime/);
   assert.match(analysisRoute, /getClaims/);
-  assert.match(analysisService, /gemini-3\.1-flash-lite/);
+  assert.match(analysisService, /gemini-2\.5-flash-lite/);
   assert.match(analysisService, /MealAnalysisSchema\.parse/);
   assert.match(route, /export async function DELETE/);
   assert.match(dashboard, /deleteTemplate/);
@@ -76,8 +78,17 @@ test("ships the Supabase-backed Personal Foods workflow", async () => {
   assert.match(calculator, /katch_mcardle/);
   assert.match(profilesSchema, /create table if not exists public\.profiles/);
   assert.match(profilesSchema, /profiles_update_own/);
+  assert.match(
+    globalStyles,
+    /\.app-shell\s*\{[^}]*background:\s*var\(--background\);[^}]*color:\s*var\(--foreground\);/s,
+  );
+  assert.match(
+    globalStyles,
+    /\.card\s*\{[^}]*background:\s*var\(--card\);[^}]*color:\s*var\(--card-foreground\);/s,
+  );
+  assert.match(globalStyles, /--primary-foreground:\s*#102218;/);
   assert.match(envExample, /GEMINI_API_KEY/);
-  assert.match(envExample, /GEMINI_MODEL=gemini-3\.1-flash-lite/);
+  assert.match(envExample, /GEMINI_MODEL=gemini-2\.5-flash-lite/);
   assert.doesNotMatch(envExample, /NEXT_PUBLIC_GEMINI/);
   assert.equal(JSON.parse(packageJson).scripts.build, "next build --webpack");
   await access(new URL("../.next/BUILD_ID", import.meta.url));

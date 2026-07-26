@@ -34,9 +34,20 @@ export const MealAnalysisSchema = z.object({
 
 export type MealAnalysis = z.infer<typeof MealAnalysisSchema>;
 
-export const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite";
+export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite";
+const RETIRED_GEMINI_MODELS = new Set(["gemini-3.1-flash-lite"]);
 
 let geminiClient: GoogleGenAI | null = null;
+
+export function getGeminiModel() {
+  const configuredModel = process.env.GEMINI_MODEL?.trim();
+
+  if (!configuredModel || RETIRED_GEMINI_MODELS.has(configuredModel)) {
+    return DEFAULT_GEMINI_MODEL;
+  }
+
+  return configuredModel;
+}
 
 function getGeminiClient() {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -52,7 +63,7 @@ export async function analyzeMealImage(
   mimeType: string,
 ): Promise<MealAnalysis> {
   const response = await getGeminiClient().models.generateContent({
-    model: process.env.GEMINI_MODEL ?? DEFAULT_GEMINI_MODEL,
+    model: getGeminiModel(),
     contents: [
       {
         inlineData: {

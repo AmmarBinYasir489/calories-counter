@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
   analyzeMealImage,
-  DEFAULT_GEMINI_MODEL,
+  getGeminiModel,
 } from "@/lib/ai/meal-analysis";
 import { createClient } from "@/lib/supabase/server";
 
@@ -81,7 +81,14 @@ function analysisFailure(error: unknown) {
       category: "permission",
     };
   }
-  if (status === 404 || message.includes("model") && message.includes("not found")) {
+  if (
+    status === 404 ||
+    (message.includes("model") &&
+      (message.includes("not found") ||
+        message.includes("no longer available") ||
+        message.includes("shut down") ||
+        message.includes("not supported")))
+  ) {
     return {
       status: 503,
       error:
@@ -188,7 +195,7 @@ export async function POST(request: Request) {
       status: providerError?.status,
       code: providerError?.code,
       category: failure.category,
-      model: process.env.GEMINI_MODEL ?? DEFAULT_GEMINI_MODEL,
+      model: getGeminiModel(),
     });
     return NextResponse.json(
       { error: failure.error, code: failure.category },

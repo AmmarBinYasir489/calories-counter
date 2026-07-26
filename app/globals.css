@@ -9,6 +9,7 @@
   --muted-foreground: #677269;
   --border: #e2e7e1;
   --primary: #1f6b45;
+  --primary-foreground: #ffffff;
   --primary-strong: #155235;
   --primary-soft: #e8f3ec;
   --accent: #ef9e45;
@@ -27,6 +28,7 @@
   --muted-foreground: #9eaaa1;
   --border: #2a352e;
   --primary: #73bd8e;
+  --primary-foreground: #102218;
   --primary-strong: #95d0a9;
   --primary-soft: #213b2a;
   --accent: #f0ad62;
@@ -63,7 +65,10 @@ button:focus-visible, input:focus-visible {
   outline-offset: 2px;
 }
 
-.app-shell { min-height: 100vh; display: grid; grid-template-columns: 236px 1fr; }
+.app-shell {
+  min-height: 100vh; display: grid; grid-template-columns: 236px 1fr;
+  background: var(--background); color: var(--foreground);
+}
 .sidebar {
   position: sticky; top: 0; height: 100vh; padding: 30px 22px 22px;
   border-right: 1px solid var(--border); background: var(--card);
@@ -72,7 +77,7 @@ button:focus-visible, input:focus-visible {
 .brand { display: flex; align-items: center; gap: 11px; margin: 0 8px 38px; }
 .brand-mark {
   width: 35px; height: 35px; display: grid; place-items: center;
-  border-radius: 11px; background: var(--primary); color: white; font-weight: 800;
+  border-radius: 11px; background: var(--primary); color: var(--primary-foreground); font-weight: 800;
 }
 .brand-name { font-size: 20px; font-weight: 750; letter-spacing: -0.5px; }
 .nav-label { margin: 0 10px 10px; color: var(--muted-foreground); font-size: 10px; font-weight: 750; letter-spacing: 1.3px; }
@@ -98,7 +103,7 @@ button:focus-visible, input:focus-visible {
 .profile-name { font-size: 13px; font-weight: 700; }
 .profile-goal { font-size: 11px; color: var(--muted-foreground); margin-top: 2px; }
 
-.main { min-width: 0; }
+.main { min-width: 0; background: var(--background); color: var(--foreground); }
 .topbar {
   height: 78px; padding: 0 38px; border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--background) 88%, transparent);
@@ -122,7 +127,7 @@ h1 { font-size: clamp(28px, 3vw, 40px); line-height: 1.05; letter-spacing: -1.5p
   border: 0; border-radius: 11px; cursor: pointer; font-weight: 700; font-size: 13px;
   min-height: 40px; padding: 0 16px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
 }
-.primary-button { background: var(--primary); color: white; box-shadow: 0 5px 14px color-mix(in srgb, var(--primary) 22%, transparent); }
+.primary-button { background: var(--primary); color: var(--primary-foreground); box-shadow: 0 5px 14px color-mix(in srgb, var(--primary) 22%, transparent); }
 .primary-button:hover { background: var(--primary-strong); transform: translateY(-1px); }
 .secondary-button { background: var(--muted); color: var(--foreground); border: 1px solid var(--border); }
 .secondary-button:hover { border-color: var(--ring); }
@@ -130,7 +135,7 @@ h1 { font-size: clamp(28px, 3vw, 40px); line-height: 1.05; letter-spacing: -1.5p
 .text-button:hover { color: var(--primary-strong); }
 
 .summary-grid { display: grid; grid-template-columns: 1.35fr repeat(3, .82fr); gap: 16px; margin-bottom: 16px; }
-.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+.card { background: var(--card); color: var(--card-foreground); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
 .calorie-card { min-height: 216px; padding: 24px; display: grid; grid-template-columns: 1fr 148px; align-items: center; overflow: hidden; position: relative; }
 .calorie-card::after {
   content: ""; width: 190px; height: 190px; border-radius: 50%;
@@ -209,7 +214,7 @@ h1 { font-size: clamp(28px, 3vw, 40px); line-height: 1.05; letter-spacing: -1.5p
 .library-icon { width: 40px; height: 40px; border-radius: 11px; background: var(--primary-soft); display: grid; place-items: center; font-size: 19px; }
 .library-name { font-size: 12px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .library-meta { font-size: 10px; color: var(--muted-foreground); margin-top: 4px; }
-.quick-add { width: 31px; height: 31px; border: 0; border-radius: 9px; background: var(--primary); color: white; cursor: pointer; font-size: 17px; }
+.quick-add { width: 31px; height: 31px; border: 0; border-radius: 9px; background: var(--primary); color: var(--primary-foreground); cursor: pointer; font-size: 17px; }
 .quick-add:hover { background: var(--primary-strong); }
 .learn-callout {
   margin-top: 16px; border-radius: 14px; background: var(--primary-soft); padding: 15px;
