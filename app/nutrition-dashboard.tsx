@@ -48,7 +48,7 @@ function templatePayload(template: FoodTemplate) {
   };
 }
 
-export function NutritionDashboard() {
+export function NutritionDashboard({ userName }: { userName: string }) {
   const [view, setView] = useState<"today" | "library">("today");
   const [templates, setTemplates] = useState<FoodTemplate[]>(seedTemplates);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -138,6 +138,13 @@ export function NutritionDashboard() {
     }).catch(() => undefined);
   }
 
+  const initials = userName
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
   return (
     <div className="app-shell">
       <aside className={`sidebar ${menuOpen ? "open" : ""}`} aria-label="Primary navigation">
@@ -163,11 +170,14 @@ export function NutritionDashboard() {
         <div className="sidebar-bottom">
           <nav className="nav" aria-label="Account navigation">
             <button className="nav-item"><span className="nav-icon" aria-hidden="true">⚙</span><span>Settings</span></button>
+            <form action="/auth/signout" method="post">
+              <button className="nav-item" type="submit"><span className="nav-icon" aria-hidden="true">↪</span><span>Sign out</span></button>
+            </form>
           </nav>
           <div className="profile-card">
-            <div className="avatar">AK</div>
+            <div className="avatar">{initials}</div>
             <div className="profile-copy">
-              <div className="profile-name">Ammar Khan</div>
+              <div className="profile-name">{userName}</div>
               <div className="profile-goal">Fat loss · 2,100 kcal</div>
             </div>
           </div>
@@ -192,7 +202,7 @@ export function NutritionDashboard() {
               <div className="page-heading">
                 <div>
                   <p className="eyebrow">Daily overview</p>
-                  <h1>Good afternoon, Ammar.</h1>
+                  <h1>Good afternoon, {userName.split(" ")[0]}.</h1>
                   <p className="heading-copy">You&apos;re on track. A protein-rich dinner will close the day well.</p>
                 </div>
                 <button className="primary-button" onClick={() => setEditorOpen(true)}>＋ Log a meal</button>
