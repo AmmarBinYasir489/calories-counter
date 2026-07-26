@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { analyzeMealImage } from "@/lib/ai/meal-analysis";
+import {
+  analyzeMealImage,
+  DEFAULT_GEMINI_MODEL,
+} from "@/lib/ai/meal-analysis";
 import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -42,6 +45,67 @@ function detectImageMime(bytes: Uint8Array) {
   }
 
   return null;
+}
+
+type ProviderError = Error & {
+  status?: number;
+  code?: number | string;
+};
+
+function analysisFailure(error: unknown) {
+  const providerError = error instanceof Error ? (error as ProviderError) : null;
+  const status = providerError?.status;
+  const message = providerError?.message.toLowerCase() ?? "";
+
+  if (message.includes("gemini_api_key is not configured")) {
+    return {
+      status: 503,
+      error:
+        "AI analysis is not configured. Add GEMINI_API_KEY to the Vercel environment.",
+      category: "configuration",
+    };
+  }
+  if (status === 429 || message.includes("quota") || message.includes("rate limit")) {
+    return {
+      status: 429,
+      error:
+        "The Gemini free-tier limit is temporarily exhausted. Please try again later.",
+      category: "quota",
+    };
+  }
+  if (status === 403 || message.includes("permission denied")) {
+    return {
+      status: 503,
+      error:
+        "Gemini API access is not enabled for the configured key.",
+      category: "permission",
+    };
+  }
+  if (status === 404 || message.includes("model") && message.includes("not found")) {
+    return {
+      status: 503,
+      error:
+        "The configured Gemini model is unavailable. Check GEMINI_MODEL in Vercel.",
+      category: "model",
+    };
+  }
+  if (
+    error instanceof SyntaxError ||
+    error instanceof z.ZodError ||
+    message.includes("empty response")
+  ) {
+    return {
+      status: 502,
+      error:
+        "Gemini returned an incomplete nutrition estimate. Please try the photo again.",
+      category: "invalid_response",
+    };
+  }
+  return {
+    status: 503,
+    error: "AI analysis is temporarily unavailable. Please try again.",
+    category: "provider",
+  };
 }
 
 export async function POST(request: Request) {
@@ -117,12 +181,18 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     await storage.remove([parsed.data.path]);
+    const failure = analysisFailure(error);
+    const providerError = error instanceof Error ? (error as ProviderError) : null;
     console.error("meal_analysis.gemini_failed", {
-      type: error instanceof Error ? error.name : "UnknownError",
+      type: providerError?.name ?? "UnknownError",
+      status: providerError?.status,
+      code: providerError?.code,
+      category: failure.category,
+      model: process.env.GEMINI_MODEL ?? DEFAULT_GEMINI_MODEL,
     });
     return NextResponse.json(
-      { error: "AI analysis is temporarily unavailable. Please try again." },
-      { status: 503 },
+      { error: failure.error, code: failure.category },
+      { status: failure.status },
     );
   }
 }

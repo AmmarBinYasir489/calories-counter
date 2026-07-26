@@ -5,7 +5,7 @@ AI-assisted nutrition tracking that turns confirmed meals into a reusable person
 [![Next.js](https://img.shields.io/badge/Next.js-16.2-black?logo=next.js)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19.2-149ECA?logo=react)](https://react.dev/)
 [![Supabase](https://img.shields.io/badge/Supabase-Auth%20%7C%20Postgres%20%7C%20Storage-3FCF8E?logo=supabase)](https://supabase.com/)
-[![Gemini](https://img.shields.io/badge/Gemini-3.6%20Flash-8E75B2?logo=google)](https://ai.google.dev/)
+[![Gemini](https://img.shields.io/badge/Gemini-3.1%20Flash--Lite-8E75B2?logo=google)](https://ai.google.dev/)
 [![Vercel](https://img.shields.io/badge/Deploy-Vercel-black?logo=vercel)](https://vercel.com/)
 
 Nourish helps users log meals from photos, review AI-estimated nutrition, and save confirmed meals as personal templates. Meals such as “Mom's Chicken Biryani,” “Office Lunch,” or “Breakfast Oats” become one-click shortcuts, improving logging speed while reducing repeated AI requests and cost.
@@ -23,6 +23,7 @@ Nourish helps users log meals from photos, review AI-estimated nutrition, and sa
 - Editable meal confirmation before saving
 - Personal Foods library with usage count and last-used tracking
 - One-click logging for previously confirmed foods
+- Delete saved Personal Foods
 - Per-user PostgreSQL and Storage Row Level Security
 - Responsive light and dark interfaces
 
@@ -35,7 +36,7 @@ flowchart LR
     A["Authenticated user"] --> B["Private Supabase Storage"]
     B --> C["Next.js analysis API"]
     C --> D["Validate ownership, size, and image signature"]
-    D --> E["Gemini 3.6 Flash"]
+    D --> E["Gemini 3.1 Flash-Lite"]
     E --> F["Zod-validated nutrition JSON"]
     F --> G["Editable confirmation"]
     G --> H["Personal Foods template"]
@@ -53,7 +54,7 @@ Images upload directly from the browser to Supabase Storage. The browser then se
 | Authentication | Supabase Auth and SSR cookie sessions |
 | Database | Supabase PostgreSQL |
 | File storage | Private Supabase Storage |
-| AI | Google Gen AI SDK, Gemini 3.6 Flash |
+| AI | Google Gen AI SDK, Gemini 3.1 Flash-Lite |
 | Validation | Zod |
 | Hosting | Vercel |
 | Testing | Node.js test runner, ESLint, Next.js production build |
@@ -113,6 +114,7 @@ Configure the following values:
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser-safe | Supabase publishable key |
 | `NEXT_PUBLIC_SITE_URL` | Browser-safe | Canonical local or production URL |
 | `GEMINI_API_KEY` | Server-only | Gemini API authorization key |
+| `GEMINI_MODEL` | Server-only | Optional model override; defaults to `gemini-3.1-flash-lite` |
 
 Never prefix the Gemini key or a Supabase secret/service-role key with `NEXT_PUBLIC_`. Never commit `.env` or `.env.local`.
 
@@ -195,6 +197,7 @@ The project uses Webpack mode because some managed Windows environments block na
 | `GET` | `/api/food-templates` | Required | List the user's Personal Foods |
 | `POST` | `/api/food-templates` | Required | Confirm and upsert a food template |
 | `PATCH` | `/api/food-templates` | Required | Increment usage for one-click logging |
+| `DELETE` | `/api/food-templates` | Required | Delete a saved Personal Food |
 | `POST` | `/api/meals/analyze` | Required | Analyze a private uploaded meal image |
 | `GET` | `/auth/callback` | OAuth flow | Exchange the Supabase OAuth code |
 | `POST` | `/auth/signout` | Required | End the current session |

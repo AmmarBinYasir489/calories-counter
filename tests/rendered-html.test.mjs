@@ -38,8 +38,10 @@ test("ships the Supabase-backed Personal Foods workflow", async () => {
   assert.match(dashboard, /meal-images/);
   assert.match(analysisRoute, /detectImageMime/);
   assert.match(analysisRoute, /getClaims/);
-  assert.match(analysisService, /gemini-3\.6-flash/);
+  assert.match(analysisService, /gemini-3\.1-flash-lite/);
   assert.match(analysisService, /MealAnalysisSchema\.parse/);
+  assert.match(route, /export async function DELETE/);
+  assert.match(dashboard, /deleteTemplate/);
   assert.match(serverClient, /createServerClient/);
   assert.match(proxy, /Cache-Control|cacheHeaders/);
   assert.match(schema, /enable row level security/);
@@ -47,9 +49,11 @@ test("ships the Supabase-backed Personal Foods workflow", async () => {
   assert.match(storageSchema, /storage\.foldername/);
   assert.match(storageSchema, /meal-images/);
   assert.match(envExample, /GEMINI_API_KEY/);
+  assert.match(envExample, /GEMINI_MODEL=gemini-3\.1-flash-lite/);
   assert.doesNotMatch(envExample, /NEXT_PUBLIC_GEMINI/);
   assert.equal(JSON.parse(packageJson).scripts.build, "next build --webpack");
   await access(new URL("../.next/BUILD_ID", import.meta.url));
+  await access(new URL("../app/icon.svg", import.meta.url));
 });
 
 test("contains no GPT Sites deployment configuration", async () => {

@@ -23,6 +23,7 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(origin),
     title: { default: "Nourish", template: "%s | Nourish" },
     description,
+    icons: { icon: "/icon.svg" },
     openGraph: {
       title: "Nourish — nutrition that learns what you eat",
       description,

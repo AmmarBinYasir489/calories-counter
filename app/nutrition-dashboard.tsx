@@ -60,12 +60,6 @@ const IMAGE_EXTENSIONS: Record<string, string> = {
   "image/webp": "webp",
 };
 
-const seedTemplates: FoodTemplate[] = [
-  { id: "seed-biryani", name: "Mom's Chicken Biryani", portion: "1 medium plate", emoji: "🍛", calories: 680, proteinG: 32, carbsG: 84, fatG: 23, sugarG: 5, fiberG: 4, sodiumMg: 890, usageCount: 12, lastUsedAt: "Today" },
-  { id: "seed-oats", name: "Breakfast Oats", portion: "1 bowl · banana & almonds", emoji: "🥣", calories: 420, proteinG: 18, carbsG: 61, fatG: 13, sugarG: 17, fiberG: 10, sodiumMg: 160, usageCount: 9, lastUsedAt: "Yesterday" },
-  { id: "seed-lunch", name: "Office Lunch", portion: "Chicken, roti & salad", emoji: "🥗", calories: 540, proteinG: 44, carbsG: 52, fatG: 17, sugarG: 7, fiberG: 8, sodiumMg: 720, usageCount: 7, lastUsedAt: "2 days ago" },
-];
-
 const meals = [
   { name: "Breakfast Oats", meta: "8:15 AM · 1 bowl", emoji: "🥣", calories: 420 },
   { name: "Chicken Biryani", meta: "1:20 PM · 1 medium plate", emoji: "🍛", calories: 680 },
@@ -93,12 +87,13 @@ function templatePayload(template: FoodTemplate) {
 export function NutritionDashboard({ userName }: { userName: string }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<"today" | "library">("today");
-  const [templates, setTemplates] = useState<FoodTemplate[]>(seedTemplates);
+  const [templates, setTemplates] = useState<FoodTemplate[]>([]);
   const [editorOpen, setEditorOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
   const [confidence, setConfidence] = useState<number | null>(null);
@@ -120,7 +115,7 @@ export function NutritionDashboard({ userName }: { userName: string }) {
     fetch("/api/food-templates")
       .then((response) => (response.ok ? response.json() : Promise.reject()))
       .then((data: { templates: FoodTemplate[] }) => {
-        if (data.templates.length) setTemplates(data.templates);
+        setTemplates(data.templates);
       })
       .catch(() => undefined);
   }, []);
@@ -266,15 +261,24 @@ export function NutritionDashboard({ userName }: { userName: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(templatePayload(draft)),
       });
-      const data = response.ok
-        ? (await response.json()) as { template: FoodTemplate }
-        : { template: { ...draft, id: crypto.randomUUID(), usageCount: 1, lastUsedAt: "Just now" } };
+      const result = (await response.json()) as {
+        template?: FoodTemplate;
+        error?: string;
+      };
+      if (!response.ok || !result.template) {
+        throw new Error(result.error ?? "The meal could not be saved.");
+      }
+      const data = { template: result.template };
       setTemplates((current) => {
         const withoutMatch = current.filter((item) => item.name.toLowerCase() !== data.template.name.toLowerCase());
         return [data.template, ...withoutMatch];
       });
       setEditorOpen(false);
       setToast(`${draft.name} logged and saved to Personal Foods`);
+    } catch (error) {
+      setAnalysisError(
+        error instanceof Error ? error.message : "The meal could not be saved.",
+      );
     } finally {
       setSaving(false);
     }
@@ -292,6 +296,33 @@ export function NutritionDashboard({ userName }: { userName: string }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: template.id, action: "log" }),
     }).catch(() => undefined);
+  }
+
+  async function deleteTemplate(template: FoodTemplate) {
+    if (!window.confirm(`Delete "${template.name}" from Personal Foods?`)) return;
+
+    setDeletingId(template.id);
+    try {
+      const response = await fetch("/api/food-templates", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: template.id }),
+      });
+      if (!response.ok) {
+        const result = (await response.json()) as { error?: string };
+        throw new Error(result.error ?? "The personal food could not be deleted.");
+      }
+      setTemplates((current) => current.filter((item) => item.id !== template.id));
+      setToast(`${template.name} deleted`);
+    } catch (error) {
+      setToast(
+        error instanceof Error
+          ? error.message
+          : "The personal food could not be deleted.",
+      );
+    } finally {
+      setDeletingId("");
+    }
   }
 
   const initials = userName
@@ -464,7 +495,17 @@ export function NutritionDashboard({ userName }: { userName: string }) {
                     <div className="template-macros">
                       <div><strong>{item.calories}</strong>kcal</div><div><strong>{item.proteinG}g</strong>protein</div><div><strong>{item.carbsG}g</strong>carbs</div><div><strong>{item.fatG}g</strong>fat</div>
                     </div>
-                    <button className="primary-button" onClick={() => quickLog(item)}>＋ Add to today</button>
+                    <div className="template-actions">
+                      <button className="primary-button" onClick={() => quickLog(item)}>＋ Add to today</button>
+                      <button
+                        className="delete-button"
+                        onClick={() => void deleteTemplate(item)}
+                        disabled={deletingId === item.id}
+                        aria-label={`Delete ${item.name}`}
+                      >
+                        {deletingId === item.id ? "Deleting…" : "Delete"}
+                      </button>
+                    </div>
                   </article>
                 )) : <div className="card empty-state"><strong>No meals found</strong><span>Try another search or create a new personal food.</span></div>}
               </div>

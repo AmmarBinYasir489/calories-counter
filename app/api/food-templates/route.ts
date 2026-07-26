@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 
 type TemplateInput = {
@@ -29,6 +30,10 @@ type FoodTemplateRow = {
   usage_count: number;
   last_used_at: string;
 };
+
+const TemplateIdSchema = z.object({
+  id: z.string().uuid(),
+});
 
 function mapTemplate(row: FoodTemplateRow) {
   return {
@@ -143,12 +148,13 @@ export async function PATCH(request: Request) {
   }
 
   const body = (await request.json()) as { id?: string; action?: string };
-  if (!body.id || body.action !== "log") {
+  const parsed = TemplateIdSchema.safeParse(body);
+  if (!parsed.success || body.action !== "log") {
     return NextResponse.json({ error: "Invalid action" }, { status: 422 });
   }
 
   const { data, error } = await supabase.rpc("log_food_template", {
-    p_template_id: body.id,
+    p_template_id: parsed.data.id,
   });
   if (error || !data) {
     console.error("food_templates.quick_log_failed", { code: error?.code });
@@ -156,4 +162,33 @@ export async function PATCH(request: Request) {
   }
 
   return NextResponse.json({ template: mapTemplate(data as FoodTemplateRow) });
+}
+
+export async function DELETE(request: Request) {
+  const supabase = await authenticatedClient();
+  if (!supabase) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
+
+  const parsed = TemplateIdSchema.safeParse(await request.json());
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid personal food id" }, { status: 422 });
+  }
+
+  const { data, error } = await supabase
+    .from("food_templates")
+    .delete()
+    .eq("id", parsed.data.id)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    console.error("food_templates.delete_failed", { code: error.code });
+    return NextResponse.json({ error: "Unable to delete personal food" }, { status: 503 });
+  }
+  if (!data) {
+    return NextResponse.json({ error: "Personal food not found" }, { status: 404 });
+  }
+
+  return new NextResponse(null, { status: 204 });
 }
