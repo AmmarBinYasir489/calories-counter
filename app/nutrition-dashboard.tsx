@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  type ChangeEvent,
+  type DragEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createClient } from "@/lib/supabase/client";
 
 type FoodTemplate = {
   id: string;
@@ -16,6 +24,40 @@ type FoodTemplate = {
   sodiumMg: number;
   usageCount: number;
   lastUsedAt: string;
+};
+
+type MealAnalysis = {
+  items: Array<{
+    name: string;
+    portion_estimate: string;
+    confidence: number;
+    calories: number;
+    protein_g: number;
+    carbs_g: number;
+    fat_g: number;
+    sugar_g: number;
+    fiber_g: number;
+    sodium_mg: number;
+  }>;
+  total_summary: {
+    calories: number;
+    protein_g: number;
+    carbs_g: number;
+    fat_g: number;
+    sugar_g: number;
+    fiber_g: number;
+    sodium_mg: number;
+  };
+  dietitian_tip: string;
+  confidence_overall: number;
+};
+
+const MEAL_IMAGE_BUCKET = "meal-images";
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const IMAGE_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
 };
 
 const seedTemplates: FoodTemplate[] = [
@@ -49,6 +91,7 @@ function templatePayload(template: FoodTemplate) {
 }
 
 export function NutritionDashboard({ userName }: { userName: string }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<"today" | "library">("today");
   const [templates, setTemplates] = useState<FoodTemplate[]>(seedTemplates);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -56,6 +99,12 @@ export function NutritionDashboard({ userName }: { userName: string }) {
   const [dark, setDark] = useState(false);
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
+  const [confidence, setConfidence] = useState<number | null>(null);
+  const [dietitianTip, setDietitianTip] = useState("");
+  const [imagePreview, setImagePreview] = useState("");
+  const [imageName, setImageName] = useState("");
   const [toast, setToast] = useState("");
   const [draft, setDraft] = useState<FoodTemplate>({
     id: "", name: "Chicken Biryani", portion: "1 medium plate", emoji: "🍛",
@@ -82,6 +131,13 @@ export function NutritionDashboard({ userName }: { userName: string }) {
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
+  useEffect(
+    () => () => {
+      if (imagePreview) URL.revokeObjectURL(imagePreview);
+    },
+    [imagePreview],
+  );
+
   const filteredTemplates = useMemo(
     () => templates.filter((item) => item.name.toLowerCase().includes(query.toLowerCase())),
     [query, templates],
@@ -100,6 +156,106 @@ export function NutritionDashboard({ userName }: { userName: string }) {
       ...current,
       [field]: numericFields.includes(field) ? Number(value) : value,
     }));
+  }
+
+  async function analyzeMealPhoto(file: File) {
+    const extension = IMAGE_EXTENSIONS[file.type];
+    if (!extension) {
+      setAnalysisError("Choose a JPEG, PNG, or WebP meal photo.");
+      return;
+    }
+    if (file.size === 0 || file.size > MAX_IMAGE_BYTES) {
+      setAnalysisError("The meal photo must be smaller than 8 MB.");
+      return;
+    }
+
+    setAnalyzing(true);
+    setAnalysisError("");
+    setConfidence(null);
+    setDietitianTip("");
+    setImageName(file.name);
+    setImagePreview(URL.createObjectURL(file));
+
+    let imagePath = "";
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+      if (userError || !user) throw new Error("Please sign in again.");
+
+      imagePath = `${user.id}/${crypto.randomUUID()}.${extension}`;
+      const { error: uploadError } = await supabase.storage
+        .from(MEAL_IMAGE_BUCKET)
+        .upload(imagePath, file, {
+          cacheControl: "3600",
+          contentType: file.type,
+          upsert: false,
+        });
+      if (uploadError) {
+        throw new Error(
+          uploadError.message.includes("Bucket not found")
+            ? "The meal-images bucket has not been created in Supabase yet."
+            : "The image could not be uploaded.",
+        );
+      }
+
+      const response = await fetch("/api/meals/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: imagePath }),
+      });
+      const result = (await response.json()) as {
+        analysis?: MealAnalysis;
+        error?: string;
+      };
+      if (!response.ok || !result.analysis) {
+        await supabase.storage.from(MEAL_IMAGE_BUCKET).remove([imagePath]);
+        throw new Error(result.error ?? "The meal could not be analyzed.");
+      }
+
+      const analysis = result.analysis;
+      const total = analysis.total_summary;
+      setDraft((current) => ({
+        ...current,
+        name: analysis.items.map((item) => item.name).slice(0, 3).join(" + "),
+        portion: analysis.items
+          .map((item) => item.portion_estimate)
+          .slice(0, 3)
+          .join(", "),
+        calories: Math.round(total.calories),
+        proteinG: total.protein_g,
+        carbsG: total.carbs_g,
+        fatG: total.fat_g,
+        sugarG: total.sugar_g,
+        fiberG: total.fiber_g,
+        sodiumMg: total.sodium_mg,
+      }));
+      setConfidence(Math.round(analysis.confidence_overall));
+      setDietitianTip(analysis.dietitian_tip);
+      setToast("Meal analyzed—review the estimate before saving");
+    } catch (error) {
+      setAnalysisError(
+        error instanceof Error
+          ? error.message
+          : "The meal could not be analyzed.",
+      );
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  function selectMealPhoto(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (file) void analyzeMealPhoto(file);
+    event.target.value = "";
+  }
+
+  function dropMealPhoto(event: DragEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    const file = event.dataTransfer.files?.[0];
+    if (file) void analyzeMealPhoto(file);
   }
 
   async function saveMeal() {
@@ -325,7 +481,43 @@ export function NutritionDashboard({ userName }: { userName: string }) {
               <button className="close-button" onClick={() => setEditorOpen(false)} aria-label="Close dialog">×</button>
             </div>
             <div className={`dialog-body ${saving ? "loading" : ""}`}>
-              <div className="confidence"><span aria-hidden="true">✓</span><strong>86% confidence</strong><span>· Review portion size for best accuracy</span></div>
+              <input
+                ref={fileInputRef}
+                className="visually-hidden"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={selectMealPhoto}
+              />
+              <button
+                className={`meal-upload ${analyzing ? "analyzing" : ""}`}
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={dropMealPhoto}
+                disabled={analyzing}
+              >
+                {imagePreview ? (
+                  <span
+                    className="meal-preview"
+                    style={{ backgroundImage: `url("${imagePreview}")` }}
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <span className="upload-icon" aria-hidden="true">⌁</span>
+                )}
+                <span>
+                  <strong>{analyzing ? "Analyzing your meal…" : imageName || "Upload a meal photo"}</strong>
+                  <span>{analyzing ? "Gemini is estimating portions and nutrients" : "Click or drag a JPEG, PNG, or WebP · max 8 MB"}</span>
+                </span>
+                {!analyzing && <span className="upload-action">{imagePreview ? "Replace" : "Browse"}</span>}
+              </button>
+              {analysisError && <div className="analysis-error" role="alert">{analysisError}</div>}
+              <div className={`confidence ${confidence !== null && confidence < 70 ? "low" : ""}`}>
+                <span aria-hidden="true">{confidence === null ? "✦" : confidence >= 70 ? "✓" : "!"}</span>
+                <strong>{confidence === null ? "Ready for AI analysis" : `${confidence}% confidence`}</strong>
+                <span>· {confidence === null ? "Upload a photo or enter values manually" : confidence < 70 ? "The estimate is uncertain—please review carefully" : "Review portion size for best accuracy"}</span>
+              </div>
+              {dietitianTip && <div className="dietitian-tip"><strong>Dietitian tip</strong>{dietitianTip}</div>}
               <div className="form-grid">
                 <div className="field"><label htmlFor="meal-name">Meal name</label><input id="meal-name" value={draft.name} onChange={(event) => updateDraft("name", event.target.value)} /></div>
                 <div className="field"><label htmlFor="meal-portion">Portion</label><input id="meal-portion" value={draft.portion} onChange={(event) => updateDraft("portion", event.target.value)} /></div>
@@ -333,7 +525,8 @@ export function NutritionDashboard({ userName }: { userName: string }) {
               <div className="nutrition-grid">
                 {([
                   ["calories", "Calories", "kcal"], ["proteinG", "Protein", "g"], ["carbsG", "Carbs", "g"],
-                  ["fatG", "Fat", "g"], ["fiberG", "Fiber", "g"], ["sodiumMg", "Sodium", "mg"],
+                  ["fatG", "Fat", "g"], ["sugarG", "Sugar", "g"], ["fiberG", "Fiber", "g"],
+                  ["sodiumMg", "Sodium", "mg"],
                 ] as const).map(([field, label, unit]) => (
                   <div className="nutrition-field" key={field}><label htmlFor={field}>{label} ({unit})</label><input id={field} type="number" min="0" value={draft[field]} onChange={(event) => updateDraft(field, event.target.value)} /></div>
                 ))}
