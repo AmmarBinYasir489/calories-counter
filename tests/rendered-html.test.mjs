@@ -53,7 +53,10 @@ test("ships the Supabase-backed Personal Foods workflow", async () => {
   assert.match(analysisRoute, /detectImageMime/);
   assert.match(analysisRoute, /getClaims/);
   assert.match(analysisService, /gemini-2\.5-flash-lite/);
-  assert.match(analysisService, /MealAnalysisSchema\.parse/);
+  assert.match(analysisService, /parseMealAnalysis/);
+  assert.match(analysisRoute, /NonFoodImageError/);
+  assert.match(dashboard, /AI analysis in progress/);
+  assert.match(dashboard, /code === "non_food"/);
   assert.match(route, /export async function DELETE/);
   assert.match(dashboard, /deleteTemplate/);
   assert.match(dashboard, /deleteMeal/);

@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   analyzeMealImage,
   getGeminiModel,
+  NonFoodImageError,
 } from "@/lib/ai/meal-analysis";
 import { createClient } from "@/lib/supabase/server";
 
@@ -57,6 +58,13 @@ function analysisFailure(error: unknown) {
   const status = providerError?.status;
   const message = providerError?.message.toLowerCase() ?? "";
 
+  if (error instanceof NonFoodImageError) {
+    return {
+      status: 422,
+      error: error.message,
+      category: "non_food",
+    };
+  }
   if (message.includes("gemini_api_key is not configured")) {
     return {
       status: 503,

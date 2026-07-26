@@ -77,6 +77,7 @@ const IMAGE_EXTENSIONS: Record<string, string> = {
   "image/png": "png",
   "image/webp": "webp",
 };
+type AnalysisStage = "idle" | "uploading" | "analyzing";
 
 const EMPTY_DRAFT: FoodTemplate = {
   id: "",
@@ -166,6 +167,7 @@ export function NutritionDashboard({
   const [deletingId, setDeletingId] = useState("");
   const [deletingMealId, setDeletingMealId] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
+  const [analysisStage, setAnalysisStage] = useState<AnalysisStage>("idle");
   const [analysisError, setAnalysisError] = useState("");
   const [confidence, setConfidence] = useState<number | null>(null);
   const [dietitianTip, setDietitianTip] = useState("");
@@ -295,18 +297,27 @@ export function NutritionDashboard({
   async function analyzeMealPhoto(file: File) {
     const extension = IMAGE_EXTENSIONS[file.type];
     if (!extension) {
-      setAnalysisError("Choose a JPEG, PNG, or WebP meal photo.");
+      setAnalysisError(
+        "That file is not a supported image. Upload a JPEG, PNG, or WebP meal photo.",
+      );
       return;
     }
     if (file.size === 0 || file.size > MAX_IMAGE_BYTES) {
-      setAnalysisError("The meal photo must be smaller than 8 MB.");
+      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+      setAnalysisError(
+        file.size === 0
+          ? "This image file is empty. Choose another meal photo."
+          : `This image is ${sizeMb} MB. The maximum allowed size is 8 MB.`,
+      );
       return;
     }
 
     setAnalyzing(true);
+    setAnalysisStage("uploading");
     setAnalysisError("");
     setConfidence(null);
     setDietitianTip("");
+    setDraft({ ...EMPTY_DRAFT });
     setImageName(file.name);
     setImagePreview(URL.createObjectURL(file));
 
@@ -335,6 +346,7 @@ export function NutritionDashboard({
         );
       }
 
+      setAnalysisStage("analyzing");
       const response = await fetch("/api/meals/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -343,9 +355,14 @@ export function NutritionDashboard({
       const result = (await response.json()) as {
         analysis?: MealAnalysis;
         error?: string;
+        code?: string;
       };
       if (!response.ok || !result.analysis) {
         await supabase.storage.from(MEAL_IMAGE_BUCKET).remove([imagePath]);
+        if (result.code === "non_food") {
+          setImagePreview("");
+          setImageName("");
+        }
         throw new Error(result.error ?? "The meal could not be analyzed.");
       }
 
@@ -377,6 +394,7 @@ export function NutritionDashboard({
       );
     } finally {
       setAnalyzing(false);
+      setAnalysisStage("idle");
     }
   }
 
@@ -748,11 +766,11 @@ export function NutritionDashboard({
       </main>
 
       {editorOpen && (
-        <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setEditorOpen(false); }}>
+        <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (!analyzing && !saving && event.currentTarget === event.target) setEditorOpen(false); }}>
           <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="meal-dialog-title">
             <div className="dialog-head">
               <div><h2 className="dialog-title" id="meal-dialog-title">Confirm your meal</h2><div className="dialog-subtitle">Review the AI estimate before adding it to today.</div></div>
-              <button className="close-button" onClick={() => setEditorOpen(false)} aria-label="Close dialog">×</button>
+              <button className="close-button" onClick={() => setEditorOpen(false)} aria-label="Close dialog" disabled={analyzing || saving}>×</button>
             </div>
             <div className={`dialog-body ${saving ? "loading" : ""}`}>
               <input
@@ -761,6 +779,7 @@ export function NutritionDashboard({
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 onChange={selectMealPhoto}
+                disabled={analyzing}
               />
               <button
                 className={`meal-upload ${analyzing ? "analyzing" : ""}`}
@@ -769,8 +788,11 @@ export function NutritionDashboard({
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={dropMealPhoto}
                 disabled={analyzing}
+                aria-busy={analyzing}
               >
-                {imagePreview ? (
+                {analyzing ? (
+                  <span className="upload-spinner" aria-hidden="true" />
+                ) : imagePreview ? (
                   <span
                     className="meal-preview"
                     style={{ backgroundImage: `url("${imagePreview}")` }}
@@ -780,12 +802,35 @@ export function NutritionDashboard({
                   <span className="upload-icon" aria-hidden="true">⌁</span>
                 )}
                 <span>
-                  <strong>{analyzing ? "Analyzing your meal…" : imageName || "Upload a meal photo"}</strong>
-                  <span>{analyzing ? "Gemini is estimating portions and nutrients" : "Click or drag a JPEG, PNG, or WebP · max 8 MB"}</span>
+                  <strong>
+                    {analysisStage === "uploading"
+                      ? "Uploading your meal photo…"
+                      : analysisStage === "analyzing"
+                        ? "Checking and analyzing your meal…"
+                        : imageName || "Upload a meal photo"}
+                  </strong>
+                  <span>
+                    {analysisStage === "uploading"
+                      ? "Securely preparing the image"
+                      : analysisStage === "analyzing"
+                        ? "Confirming it is food, then estimating portions and nutrients"
+                        : "Click or drag a JPEG, PNG, or WebP · max 8 MB"}
+                  </span>
                 </span>
                 {!analyzing && <span className="upload-action">{imagePreview ? "Replace" : "Browse"}</span>}
               </button>
-              {analysisError && <div className="analysis-error" role="alert">{analysisError}</div>}
+              {analyzing && (
+                <div className="analysis-status" role="status" aria-live="polite">
+                  <span>{analysisStage === "uploading" ? "Uploading" : "AI analysis in progress"}</span>
+                  <span>Please keep this window open</span>
+                </div>
+              )}
+              {analysisError && (
+                <div className="analysis-error" role="alert">
+                  <strong>Couldn’t analyze this photo</strong>
+                  <span>{analysisError}</span>
+                </div>
+              )}
               <div className={`confidence ${confidence !== null && confidence < 70 ? "low" : ""}`}>
                 <span aria-hidden="true">{confidence === null ? "✦" : confidence >= 70 ? "✓" : "!"}</span>
                 <strong>{confidence === null ? "Ready for AI analysis" : `${confidence}% confidence`}</strong>
@@ -809,7 +854,7 @@ export function NutritionDashboard({
                 <input type="checkbox" checked={saveAsTemplate} onChange={(event) => setSaveAsTemplate(event.target.checked)} />
                 <span><strong>Save to Personal Foods</strong><span>Use these confirmed values next time instead of calling AI again.</span></span>
               </label>
-              <div className="dialog-actions"><button className="secondary-button" onClick={() => setEditorOpen(false)}>Cancel</button><button className="primary-button" onClick={saveMeal} disabled={saving}>{saving ? "Saving…" : "Save meal & template"}</button></div>
+              <div className="dialog-actions"><button className="secondary-button" onClick={() => setEditorOpen(false)} disabled={analyzing || saving}>Cancel</button><button className="primary-button" onClick={saveMeal} disabled={saving || analyzing}>{saving ? "Saving…" : analyzing ? "Processing photo…" : "Save meal & template"}</button></div>
             </div>
           </div>
         </div>

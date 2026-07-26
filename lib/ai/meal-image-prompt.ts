@@ -62,4 +62,13 @@ Return ONLY JSON.
  },
  "dietitian_tip":"",
  "confidence_overall":0
-}`;
+}
+
+Food-photo validation rules:
+
+• Set "is_food_image" to true only when the image clearly shows edible food, a meal, or a drink intended for consumption.
+• Set it to false for people, pets, scenery, documents, screens, random objects, empty plates, or images where food cannot be identified.
+• Never invent food to satisfy the request.
+• When false, return an empty items array, zero nutrition totals, zero confidence, an empty dietitian tip, and a short rejection_reason.
+• When true, return rejection_reason as an empty string.
+• Include "is_food_image" and "rejection_reason" in the JSON response.`;

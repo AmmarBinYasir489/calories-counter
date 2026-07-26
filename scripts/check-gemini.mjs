@@ -1,4 +1,10 @@
 import { GoogleGenAI } from "@google/genai";
+import { MEAL_IMAGE_ANALYSIS_PROMPT } from "../lib/ai/meal-image-prompt.ts";
+import {
+  MEAL_ANALYSIS_RESPONSE_JSON_SCHEMA,
+  NonFoodImageError,
+  parseMealAnalysis,
+} from "../lib/ai/meal-analysis-schema.ts";
 
 const apiKey = process.env.GEMINI_API_KEY;
 const model = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
@@ -19,30 +25,26 @@ if (!apiKey) {
               "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
           },
         },
-        {
-          text:
-            'This is a connectivity test. Return JSON with "ok" set to true.',
-        },
+        { text: MEAL_IMAGE_ANALYSIS_PROMPT },
       ],
       config: {
         responseMimeType: "application/json",
-        responseJsonSchema: {
-          type: "object",
-          properties: {
-            ok: { type: "boolean" },
-          },
-          required: ["ok"],
-          additionalProperties: false,
-        },
+        responseJsonSchema: MEAL_ANALYSIS_RESPONSE_JSON_SCHEMA,
       },
     });
 
-    const parsed = JSON.parse(response.text || "{}");
-    if (parsed.ok !== true) {
-      throw new Error("Gemini returned an unexpected structured response.");
+    try {
+      parseMealAnalysis(JSON.parse(response.text || "{}"));
+      throw new Error("Gemini incorrectly accepted a blank non-food image.");
+    } catch (error) {
+      if (!(error instanceof NonFoodImageError)) {
+        throw error;
+      }
     }
 
-    console.log(`Gemini check passed: ${model} accepted image input and JSON output.`);
+    console.log(
+      `Gemini check passed: ${model} accepted image input, returned structured JSON, and rejected a non-food image.`,
+    );
   } catch (error) {
     const status =
       typeof error === "object" && error !== null && "status" in error

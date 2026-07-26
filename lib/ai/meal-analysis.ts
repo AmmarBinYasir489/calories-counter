@@ -1,38 +1,12 @@
 import { GoogleGenAI } from "@google/genai";
-import { z } from "zod";
 import { MEAL_IMAGE_ANALYSIS_PROMPT } from "@/lib/ai/meal-image-prompt";
+import {
+  MEAL_ANALYSIS_RESPONSE_JSON_SCHEMA,
+  parseMealAnalysis,
+  type MealAnalysis,
+} from "@/lib/ai/meal-analysis-schema";
 
-const nutrient = z.number().finite().min(0);
-
-export const MealAnalysisSchema = z.object({
-  items: z.array(
-    z.object({
-      name: z.string().trim().min(1).max(120),
-      portion_estimate: z.string().trim().min(1).max(160),
-      confidence: z.number().finite().min(0).max(100),
-      calories: nutrient,
-      protein_g: nutrient,
-      carbs_g: nutrient,
-      fat_g: nutrient,
-      sugar_g: nutrient,
-      fiber_g: nutrient,
-      sodium_mg: nutrient,
-    }),
-  ).min(1).max(30),
-  total_summary: z.object({
-    calories: nutrient,
-    protein_g: nutrient,
-    carbs_g: nutrient,
-    fat_g: nutrient,
-    sugar_g: nutrient,
-    fiber_g: nutrient,
-    sodium_mg: nutrient,
-  }),
-  dietitian_tip: z.string().trim().max(500),
-  confidence_overall: z.number().finite().min(0).max(100),
-});
-
-export type MealAnalysis = z.infer<typeof MealAnalysisSchema>;
+export { NonFoodImageError } from "@/lib/ai/meal-analysis-schema";
 
 export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite";
 const RETIRED_GEMINI_MODELS = new Set(["gemini-3.1-flash-lite"]);
@@ -75,7 +49,7 @@ export async function analyzeMealImage(
     ],
     config: {
       responseMimeType: "application/json",
-      responseJsonSchema: z.toJSONSchema(MealAnalysisSchema),
+      responseJsonSchema: MEAL_ANALYSIS_RESPONSE_JSON_SCHEMA,
     },
   });
 
@@ -83,5 +57,5 @@ export async function analyzeMealImage(
     throw new Error("Gemini returned an empty response");
   }
 
-  return MealAnalysisSchema.parse(JSON.parse(response.text));
+  return parseMealAnalysis(JSON.parse(response.text));
 }
