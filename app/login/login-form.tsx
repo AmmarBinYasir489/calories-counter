@@ -23,7 +23,9 @@ export function LoginForm() {
         : await supabase.auth.signUp({
             email,
             password,
-            options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+            options: {
+              emailRedirectTo: `${window.location.origin}/auth/callback?next=/onboarding`,
+            },
           });
 
     if (result.error) {
@@ -36,7 +38,7 @@ export function LoginForm() {
       setLoading(false);
       return;
     }
-    window.location.assign("/");
+    window.location.assign(mode === "signup" ? "/onboarding" : "/");
   }
 
   async function signInWithGoogle() {
@@ -60,6 +62,12 @@ export function LoginForm() {
       </button>
       <div className="auth-divider"><span>or continue with email</span></div>
       <form className="auth-form" onSubmit={submit}>
+        {mode === "signup" && (
+          <p className="signup-plan-note">
+            After creating your account, a quick three-step setup will calculate
+            your calorie and macro targets.
+          </p>
+        )}
         <div className="field">
           <label htmlFor="email">Email address</label>
           <input id="email" type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" />

@@ -9,7 +9,7 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "test": "npm run build && node --experimental-strip-types --test tests/rendered-html.test.mjs tests/nutrition-calculator.test.mjs",
     "lint": "eslint . --ignore-pattern .next"
   },
   "dependencies": {

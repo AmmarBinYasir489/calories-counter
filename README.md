@@ -15,6 +15,10 @@ Nourish helps users log meals from photos, review AI-estimated nutrition, and sa
 - Email/password authentication through Supabase Auth
 - Google OAuth through Supabase Auth
 - Protected Next.js dashboard and authenticated API routes
+- First-login, three-step nutrition onboarding
+- Profile collection for age, physiological sex, height, weight, activity, goal, target weight, and optional health conditions
+- BMI, BMR, TDEE, calorie, protein, carbohydrate, and fat targets
+- Balanced, Mifflin–St Jeor, Revised Harris–Benedict, and Katch–McArdle calculation options
 - Direct meal-photo uploads to a private Supabase Storage bucket
 - Gemini multimodal analysis using the provided sports-nutrition prompt
 - Structured and runtime-validated nutrition output
@@ -28,9 +32,20 @@ Nourish helps users log meals from photos, review AI-estimated nutrition, and sa
 - Delete individual meals from Today
 - Seven-day calories calculated from actual meal records
 - Per-user PostgreSQL and Storage Row Level Security
-- Responsive light and dark interfaces
+- Dark-by-default authenticated experience with switchable light mode
 
-> Daily and weekly totals are calculated from persisted meal records. Personalized calorie and macro targets based on the full profile calculator remain a planned module.
+> Daily and weekly totals are calculated from persisted meal records and compared with each user's saved targets. All calculated targets are estimates and should be reviewed over time, especially when a medical condition is present.
+
+## How nutrition targets are calculated
+
+On first login, users complete a three-step profile and choose one of four resting-energy methods:
+
+- **Balanced estimate** — averages Mifflin–St Jeor and Revised Harris–Benedict
+- **Mifflin–St Jeor** — uses age, height, weight, and physiological sex
+- **Revised Harris–Benedict** — an alternative age, height, and weight estimate
+- **Katch–McArdle** — uses lean body mass and requires body-fat percentage
+
+Resting energy is multiplied by the selected activity factor to estimate TDEE. A conservative goal adjustment then produces the daily calorie target. Protein is weight- and goal-based, fat receives 25% of target calories, and carbohydrates receive the remaining calories. The API validates all inputs and recalculates every target server-side before saving it.
 
 ## How meal analysis works
 
@@ -129,11 +144,19 @@ Never prefix the Gemini key or a Supabase secret/service-role key with `NEXT_PUB
 
 Open **Supabase Dashboard → SQL Editor**, then run these files in order:
 
-1. `database/supabase_personal_foods.sql`
-2. `database/supabase_meal_images.sql`
-3. `database/supabase_meal_logs.sql`
+1. `database/supabase_profiles.sql`
+2. `database/supabase_personal_foods.sql`
+3. `database/supabase_meal_images.sql`
+4. `database/supabase_meal_logs.sql`
 
 The first script creates:
+
+- `public.profiles`
+- Validated onboarding fields and server-calculated nutrition targets
+- Ownership-based select, insert, and update RLS policies
+- Authenticated-role grants
+
+The second script creates:
 
 - `public.food_templates`
 - Ownership-based RLS policies
@@ -141,14 +164,14 @@ The first script creates:
 - `log_food_template` RPC
 - Authenticated-role grants
 
-The second script creates:
+The third script creates:
 
 - Private `meal-images` bucket
 - 8 MB upload limit
 - JPEG, PNG, and WebP allowlist
 - Per-user folder policies for select, insert, update, and delete
 
-The third script creates:
+The fourth script creates:
 
 - `public.meal_logs`
 - Ownership-based select, insert, update, and delete RLS policies
@@ -215,6 +238,8 @@ The project uses Webpack mode because some managed Windows environments block na
 | `POST` | `/api/meals` | Required | Add a meal to Today |
 | `DELETE` | `/api/meals` | Required | Delete an individual meal log |
 | `POST` | `/api/meals/analyze` | Required | Analyze a private uploaded meal image |
+| `GET` | `/api/profile` | Required | Get the user's nutrition profile |
+| `PUT` | `/api/profile` | Required | Calculate and save the user's nutrition plan |
 | `GET` | `/auth/callback` | OAuth flow | Exchange the Supabase OAuth code |
 | `POST` | `/auth/signout` | Required | End the current session |
 
@@ -253,7 +278,7 @@ Successful analysis returns:
 ## Security design
 
 - Authenticated server routes revalidate Supabase claims
-- PostgreSQL RLS isolates every user's templates
+- PostgreSQL RLS isolates every user's profile, templates, and meal logs
 - Storage policies isolate every user's image folder
 - The Gemini key is read only by server-side code
 - No service-role key is required by the application
@@ -268,7 +293,7 @@ Successful analysis returns:
 
 1. Import `AmmarBinYasir489/calories-counter` into Vercel.
 2. Keep the framework preset as **Next.js**.
-3. Add all four variables from `.env.example`.
+3. Add all variables from `.env.example`.
 4. Scope production secrets to the Production environment.
 5. Set `NEXT_PUBLIC_SITE_URL` to the final HTTPS domain.
 6. Deploy.
@@ -291,14 +316,15 @@ The current production build includes:
 
 - Authenticated dashboard
 - Personal Foods API
+- Profile onboarding and server-side nutrition calculator
+- Persistent meal logging and dynamic dashboard targets
 - Gemini meal-analysis API
 - Supabase session proxy
 - Login, OAuth callback, and sign-out routes
 
 ## Roadmap
 
-- User profiles and scientifically calculated BMI, BMR, TDEE, and macro targets
-- Persistent meal logs, meal items, and daily summaries
+- Meal items and precomputed daily summaries
 - Calendar, daily, and weekly meal history
 - Health-condition-aware nutrition alerts
 - Manual food search and custom foods

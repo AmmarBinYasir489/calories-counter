@@ -78,9 +78,6 @@ const IMAGE_EXTENSIONS: Record<string, string> = {
   "image/webp": "webp",
 };
 
-const DAILY_CALORIE_TARGET = 2_100;
-const DAILY_PROTEIN_TARGET = 135;
-const DAILY_CARB_TARGET = 235;
 const EMPTY_DRAFT: FoodTemplate = {
   id: "",
   name: "",
@@ -142,7 +139,20 @@ function templatePayload(template: FoodTemplate) {
   };
 }
 
-export function NutritionDashboard({ userName }: { userName: string }) {
+export function NutritionDashboard({
+  userName,
+  goalName,
+  targets,
+}: {
+  userName: string;
+  goalName: string;
+  targets: {
+    calories: number;
+    proteinG: number;
+    carbsG: number;
+    fatG: number;
+  };
+}) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<"today" | "library">("today");
   const [templates, setTemplates] = useState<FoodTemplate[]>([]);
@@ -150,7 +160,7 @@ export function NutritionDashboard({ userName }: { userName: string }) {
   const [mealLoadError, setMealLoadError] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [dark, setDark] = useState(false);
+  const [dark, setDark] = useState(true);
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState("");
@@ -164,10 +174,6 @@ export function NutritionDashboard({ userName }: { userName: string }) {
   const [toast, setToast] = useState("");
   const [saveAsTemplate, setSaveAsTemplate] = useState(true);
   const [draft, setDraft] = useState<FoodTemplate>({ ...EMPTY_DRAFT });
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = dark ? "dark" : "light";
-  }, [dark]);
 
   useEffect(() => {
     const days = lastSevenDays();
@@ -249,9 +255,9 @@ export function NutritionDashboard({ userName }: { userName: string }) {
   );
   const caloriePercentage = Math.min(
     100,
-    Math.round((totals.calories / DAILY_CALORIE_TARGET) * 100),
+    Math.round((totals.calories / targets.calories) * 100),
   );
-  const caloriesRemaining = Math.max(0, DAILY_CALORIE_TARGET - totals.calories);
+  const caloriesRemaining = Math.max(0, targets.calories - totals.calories);
   const weeklyAverage = Math.round(
     weeklyCalories.reduce((sum, calories) => sum + calories, 0) / 7,
   );
@@ -259,6 +265,10 @@ export function NutritionDashboard({ userName }: { userName: string }) {
   function navigate(next: "today" | "library") {
     setView(next);
     setMenuOpen(false);
+  }
+
+  function toggleTheme() {
+    setDark((current) => !current);
   }
 
   function openMealEditor() {
@@ -537,7 +547,7 @@ export function NutritionDashboard({ userName }: { userName: string }) {
     .toUpperCase();
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-theme={dark ? "dark" : "light"}>
       <aside className={`sidebar ${menuOpen ? "open" : ""}`} aria-label="Primary navigation">
         <div className="brand">
           <div className="brand-mark" aria-hidden="true">N</div>
@@ -560,7 +570,7 @@ export function NutritionDashboard({ userName }: { userName: string }) {
         </nav>
         <div className="sidebar-bottom">
           <nav className="nav" aria-label="Account navigation">
-            <button className="nav-item"><span className="nav-icon" aria-hidden="true">⚙</span><span>Settings</span></button>
+            <button className="nav-item" onClick={() => window.location.assign("/onboarding?edit=1")}><span className="nav-icon" aria-hidden="true">⚙</span><span>Settings</span></button>
             <form action="/auth/signout" method="post">
               <button className="nav-item" type="submit"><span className="nav-icon" aria-hidden="true">↪</span><span>Sign out</span></button>
             </form>
@@ -569,7 +579,7 @@ export function NutritionDashboard({ userName }: { userName: string }) {
             <div className="avatar">{initials}</div>
             <div className="profile-copy">
               <div className="profile-name">{userName}</div>
-              <div className="profile-goal">Fat loss · 2,100 kcal</div>
+              <div className="profile-goal">{goalName} · {targets.calories.toLocaleString()} kcal</div>
             </div>
           </div>
         </div>
@@ -588,7 +598,7 @@ export function NutritionDashboard({ userName }: { userName: string }) {
             </div>
           </div>
           <div className="top-actions">
-            <button className="icon-button" onClick={() => setDark((value) => !value)} aria-label="Toggle color theme">{dark ? "☀" : "◐"}</button>
+            <button className="icon-button" onClick={toggleTheme} aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}>{dark ? "☀" : "◐"}</button>
             <button className="icon-button" aria-label="Notifications">♢</button>
           </div>
         </header>
@@ -613,7 +623,7 @@ export function NutritionDashboard({ userName }: { userName: string }) {
                     <div className="calorie-unit">kcal left today</div>
                     <div className="mini-stats">
                       <div className="mini-stat"><strong>{totals.calories.toLocaleString()}</strong><span>Consumed</span></div>
-                      <div className="mini-stat"><strong>{DAILY_CALORIE_TARGET.toLocaleString()}</strong><span>Daily goal</span></div>
+                      <div className="mini-stat"><strong>{targets.calories.toLocaleString()}</strong><span>Daily goal</span></div>
                     </div>
                   </div>
                   <div
@@ -624,8 +634,9 @@ export function NutritionDashboard({ userName }: { userName: string }) {
                     <div className="ring-content"><strong>{caloriePercentage}%</strong><span>of your goal</span></div>
                   </div>
                 </article>
-                <MacroCard label="Protein" value={Math.round(totals.proteinG)} target={DAILY_PROTEIN_TARGET} unit="g" color="#3f8f65" />
-                <MacroCard label="Carbohydrates" value={Math.round(totals.carbsG)} target={DAILY_CARB_TARGET} unit="g" color="#e19a4d" />
+                <MacroCard label="Protein" value={Math.round(totals.proteinG)} target={targets.proteinG} unit="g" color="#3f8f65" />
+                <MacroCard label="Carbohydrates" value={Math.round(totals.carbsG)} target={targets.carbsG} unit="g" color="#e19a4d" />
+                <MacroCard label="Fat" value={Math.round(totals.fatG)} target={targets.fatG} unit="g" color="#b97652" />
               </section>
 
               <section className="dashboard-grid">
@@ -688,7 +699,7 @@ export function NutritionDashboard({ userName }: { userName: string }) {
                   </div>
                   <div className="bar-chart" aria-label="Weekly calories bar chart">
                     {weeklyCalories.map((calories, index) => (
-                      <div className="bar-column" key={weekDays[index].key}><div className={`bar ${index === 6 ? "today" : ""}`} style={{ height: `${Math.max(4, Math.min(100, Math.round(calories / DAILY_CALORIE_TARGET * 100)))}%` }} title={`${calories} kcal`} /><div className="bar-label">{weekDays[index].label}</div></div>
+                      <div className="bar-column" key={weekDays[index].key}><div className={`bar ${index === 6 ? "today" : ""}`} style={{ height: `${Math.max(4, Math.min(100, Math.round(calories / targets.calories * 100)))}%` }} title={`${calories} kcal`} /><div className="bar-label">{weekDays[index].label}</div></div>
                     ))}
                   </div>
                 </article>
