@@ -7,12 +7,14 @@ test("ships the Supabase-backed Personal Foods workflow", async () => {
     page,
     dashboard,
     route,
+    mealsRoute,
     analysisRoute,
     analysisService,
     serverClient,
     proxy,
     schema,
     storageSchema,
+    mealLogsSchema,
     envExample,
     packageJson,
   ] =
@@ -20,12 +22,14 @@ test("ships the Supabase-backed Personal Foods workflow", async () => {
       readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
       readFile(new URL("../app/nutrition-dashboard.tsx", import.meta.url), "utf8"),
       readFile(new URL("../app/api/food-templates/route.ts", import.meta.url), "utf8"),
+      readFile(new URL("../app/api/meals/route.ts", import.meta.url), "utf8"),
       readFile(new URL("../app/api/meals/analyze/route.ts", import.meta.url), "utf8"),
       readFile(new URL("../lib/ai/meal-analysis.ts", import.meta.url), "utf8"),
       readFile(new URL("../lib/supabase/server.ts", import.meta.url), "utf8"),
       readFile(new URL("../lib/supabase/proxy.ts", import.meta.url), "utf8"),
       readFile(new URL("../database/supabase_personal_foods.sql", import.meta.url), "utf8"),
       readFile(new URL("../database/supabase_meal_images.sql", import.meta.url), "utf8"),
+      readFile(new URL("../database/supabase_meal_logs.sql", import.meta.url), "utf8"),
       readFile(new URL("../.env.example", import.meta.url), "utf8"),
       readFile(new URL("../package.json", import.meta.url), "utf8"),
     ]);
@@ -42,12 +46,20 @@ test("ships the Supabase-backed Personal Foods workflow", async () => {
   assert.match(analysisService, /MealAnalysisSchema\.parse/);
   assert.match(route, /export async function DELETE/);
   assert.match(dashboard, /deleteTemplate/);
+  assert.match(dashboard, /deleteMeal/);
+  assert.match(dashboard, /totals\.calories/);
+  assert.doesNotMatch(dashboard, /const meals =/);
+  assert.match(mealsRoute, /export async function GET/);
+  assert.match(mealsRoute, /export async function POST/);
+  assert.match(mealsRoute, /export async function DELETE/);
   assert.match(serverClient, /createServerClient/);
   assert.match(proxy, /Cache-Control|cacheHeaders/);
   assert.match(schema, /enable row level security/);
   assert.match(schema, /security invoker/);
   assert.match(storageSchema, /storage\.foldername/);
   assert.match(storageSchema, /meal-images/);
+  assert.match(mealLogsSchema, /create table if not exists public\.meal_logs/);
+  assert.match(mealLogsSchema, /meal_logs_delete_own/);
   assert.match(envExample, /GEMINI_API_KEY/);
   assert.match(envExample, /GEMINI_MODEL=gemini-3\.1-flash-lite/);
   assert.doesNotMatch(envExample, /NEXT_PUBLIC_GEMINI/);

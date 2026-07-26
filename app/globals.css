@@ -145,7 +145,10 @@ h1 { font-size: clamp(28px, 3vw, 40px); line-height: 1.05; letter-spacing: -1.5p
 .ring { width: 134px; height: 134px; position: relative; display: grid; place-items: center; z-index: 1; }
 .ring::before {
   content: ""; position: absolute; inset: 0; border-radius: 50%;
-  background: conic-gradient(var(--primary) 0 62%, var(--muted) 62% 100%);
+  background: conic-gradient(
+    var(--primary) 0 var(--calorie-progress, 0%),
+    var(--muted) var(--calorie-progress, 0%) 100%
+  );
   -webkit-mask: radial-gradient(circle at center, transparent 54%, black 55%);
   mask: radial-gradient(circle at center, transparent 54%, black 55%);
 }
@@ -184,6 +187,18 @@ h1 { font-size: clamp(28px, 3vw, 40px); line-height: 1.05; letter-spacing: -1.5p
 .meal-calories span { display: block; color: var(--muted-foreground); font-size: 10px; font-weight: 500; margin-top: 3px; }
 .more-button { border: 0; background: transparent; color: var(--muted-foreground); cursor: pointer; padding: 8px; border-radius: 8px; }
 .more-button:hover { background: var(--muted); color: var(--foreground); }
+.meal-delete {
+  border: 0; background: transparent; color: #b94a48; cursor: pointer;
+  padding: 7px 8px; border-radius: 8px; font-size: 10px; font-weight: 700;
+}
+.meal-delete:hover { background: color-mix(in srgb, #c74242 9%, transparent); }
+.meal-delete:disabled { cursor: wait; opacity: .6; }
+.meal-empty {
+  min-height: 150px; display: grid; place-items: center; align-content: center;
+  gap: 6px; text-align: center; color: var(--muted-foreground); font-size: 11px;
+}
+.meal-empty strong { color: var(--foreground); font-size: 13px; }
+.meal-empty.error { color: #b94a48; }
 
 .library-list { display: grid; gap: 11px; }
 .library-item {

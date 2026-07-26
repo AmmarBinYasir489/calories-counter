@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type CSSProperties,
   type ChangeEvent,
   type DragEvent,
   useEffect,
@@ -24,6 +25,23 @@ type FoodTemplate = {
   sodiumMg: number;
   usageCount: number;
   lastUsedAt: string;
+};
+
+type MealLog = {
+  id: string;
+  templateId: string | null;
+  name: string;
+  portion: string;
+  emoji: string;
+  calories: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+  sugarG: number;
+  fiberG: number;
+  sodiumMg: number;
+  loggedOn: string;
+  loggedAt: string;
 };
 
 type MealAnalysis = {
@@ -60,14 +78,54 @@ const IMAGE_EXTENSIONS: Record<string, string> = {
   "image/webp": "webp",
 };
 
-const meals = [
-  { name: "Breakfast Oats", meta: "8:15 AM · 1 bowl", emoji: "🥣", calories: 420 },
-  { name: "Chicken Biryani", meta: "1:20 PM · 1 medium plate", emoji: "🍛", calories: 680 },
-  { name: "Mango Lassi", meta: "4:05 PM · 1 glass", emoji: "🥭", calories: 210 },
-];
+const DAILY_CALORIE_TARGET = 2_100;
+const DAILY_PROTEIN_TARGET = 135;
+const DAILY_CARB_TARGET = 235;
+const EMPTY_DRAFT: FoodTemplate = {
+  id: "",
+  name: "",
+  portion: "",
+  emoji: "🍽️",
+  calories: 0,
+  proteinG: 0,
+  carbsG: 0,
+  fatG: 0,
+  sugarG: 0,
+  fiberG: 0,
+  sodiumMg: 0,
+  usageCount: 0,
+  lastUsedAt: "",
+};
 
-const bars = [72, 88, 61, 96, 79, 85, 68];
-const days = ["M", "T", "W", "T", "F", "S", "Today"];
+function localDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function lastSevenDays() {
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setHours(12, 0, 0, 0);
+    date.setDate(date.getDate() - (6 - index));
+    return {
+      key: localDateKey(date),
+      label:
+        index === 6
+          ? "Today"
+          : new Intl.DateTimeFormat(undefined, { weekday: "narrow" }).format(date),
+    };
+  });
+}
+
+function mealPayload(template: FoodTemplate, templateId?: string | null) {
+  return {
+    ...templatePayload(template),
+    templateId: templateId ?? null,
+    loggedOn: localDateKey(),
+  };
+}
 
 function templatePayload(template: FoodTemplate) {
   return {
@@ -88,12 +146,15 @@ export function NutritionDashboard({ userName }: { userName: string }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [view, setView] = useState<"today" | "library">("today");
   const [templates, setTemplates] = useState<FoodTemplate[]>([]);
+  const [mealLogs, setMealLogs] = useState<MealLog[]>([]);
+  const [mealLoadError, setMealLoadError] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState("");
+  const [deletingMealId, setDeletingMealId] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
   const [confidence, setConfidence] = useState<number | null>(null);
@@ -101,23 +162,43 @@ export function NutritionDashboard({ userName }: { userName: string }) {
   const [imagePreview, setImagePreview] = useState("");
   const [imageName, setImageName] = useState("");
   const [toast, setToast] = useState("");
-  const [draft, setDraft] = useState<FoodTemplate>({
-    id: "", name: "Chicken Biryani", portion: "1 medium plate", emoji: "🍛",
-    calories: 680, proteinG: 32, carbsG: 84, fatG: 23, sugarG: 5,
-    fiberG: 4, sodiumMg: 890, usageCount: 0, lastUsedAt: "",
-  });
+  const [saveAsTemplate, setSaveAsTemplate] = useState(true);
+  const [draft, setDraft] = useState<FoodTemplate>({ ...EMPTY_DRAFT });
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
 
   useEffect(() => {
-    fetch("/api/food-templates")
-      .then((response) => (response.ok ? response.json() : Promise.reject()))
-      .then((data: { templates: FoodTemplate[] }) => {
-        setTemplates(data.templates);
+    const days = lastSevenDays();
+    void fetch("/api/food-templates")
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Unable to load Personal Foods");
+        return response.json() as Promise<{ templates: FoodTemplate[] }>;
       })
-      .catch(() => undefined);
+      .then((data) => setTemplates(data.templates))
+      .catch(() => setTemplates([]));
+
+    void fetch(`/api/meals?from=${days[0].key}&to=${days[6].key}`)
+      .then(async (response) => {
+          const result = (await response.json()) as {
+            meals?: MealLog[];
+            error?: string;
+          };
+          if (!response.ok || !result.meals) {
+            throw new Error(result.error ?? "Unable to load meals");
+          }
+          return result.meals;
+        })
+      .then((meals) => {
+        setMealLogs(meals);
+        setMealLoadError("");
+      })
+      .catch((error) => {
+        setMealLoadError(
+          error instanceof Error ? error.message : "Unable to load today's meals",
+        );
+      });
   }, []);
 
   useEffect(() => {
@@ -137,10 +218,58 @@ export function NutritionDashboard({ userName }: { userName: string }) {
     () => templates.filter((item) => item.name.toLowerCase().includes(query.toLowerCase())),
     [query, templates],
   );
+  const weekDays = useMemo(() => lastSevenDays(), []);
+  const todayKey = weekDays[6].key;
+  const todayMeals = useMemo(
+    () => mealLogs.filter((meal) => meal.loggedOn === todayKey),
+    [mealLogs, todayKey],
+  );
+  const totals = useMemo(
+    () =>
+      todayMeals.reduce(
+        (sum, meal) => ({
+          calories: sum.calories + meal.calories,
+          proteinG: sum.proteinG + meal.proteinG,
+          carbsG: sum.carbsG + meal.carbsG,
+          fatG: sum.fatG + meal.fatG,
+          sodiumMg: sum.sodiumMg + meal.sodiumMg,
+        }),
+        { calories: 0, proteinG: 0, carbsG: 0, fatG: 0, sodiumMg: 0 },
+      ),
+    [todayMeals],
+  );
+  const weeklyCalories = useMemo(
+    () =>
+      weekDays.map((day) =>
+        mealLogs
+          .filter((meal) => meal.loggedOn === day.key)
+          .reduce((sum, meal) => sum + meal.calories, 0),
+      ),
+    [mealLogs, weekDays],
+  );
+  const caloriePercentage = Math.min(
+    100,
+    Math.round((totals.calories / DAILY_CALORIE_TARGET) * 100),
+  );
+  const caloriesRemaining = Math.max(0, DAILY_CALORIE_TARGET - totals.calories);
+  const weeklyAverage = Math.round(
+    weeklyCalories.reduce((sum, calories) => sum + calories, 0) / 7,
+  );
 
   function navigate(next: "today" | "library") {
     setView(next);
     setMenuOpen(false);
+  }
+
+  function openMealEditor() {
+    setDraft({ ...EMPTY_DRAFT });
+    setAnalysisError("");
+    setConfidence(null);
+    setDietitianTip("");
+    setImageName("");
+    setImagePreview("");
+    setSaveAsTemplate(true);
+    setEditorOpen(true);
   }
 
   function updateDraft(field: keyof FoodTemplate, value: string) {
@@ -255,26 +384,51 @@ export function NutritionDashboard({ userName }: { userName: string }) {
 
   async function saveMeal() {
     setSaving(true);
+    setAnalysisError("");
     try {
-      const response = await fetch("/api/food-templates", {
+      let templateId: string | null = null;
+      if (saveAsTemplate) {
+        const response = await fetch("/api/food-templates", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(templatePayload(draft)),
+        });
+        const result = (await response.json()) as {
+          template?: FoodTemplate;
+          error?: string;
+        };
+        if (!response.ok || !result.template) {
+          throw new Error(result.error ?? "The personal food could not be saved.");
+        }
+        templateId = result.template.id;
+        setTemplates((current) => {
+          const withoutMatch = current.filter(
+            (item) => item.name.toLowerCase() !== result.template!.name.toLowerCase(),
+          );
+          return [result.template!, ...withoutMatch];
+        });
+      }
+
+      const mealResponse = await fetch("/api/meals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(templatePayload(draft)),
+        body: JSON.stringify(mealPayload(draft, templateId)),
       });
-      const result = (await response.json()) as {
-        template?: FoodTemplate;
+      const mealResult = (await mealResponse.json()) as {
+        meal?: MealLog;
         error?: string;
       };
-      if (!response.ok || !result.template) {
-        throw new Error(result.error ?? "The meal could not be saved.");
+      if (!mealResponse.ok || !mealResult.meal) {
+        throw new Error(mealResult.error ?? "The meal could not be logged.");
       }
-      const data = { template: result.template };
-      setTemplates((current) => {
-        const withoutMatch = current.filter((item) => item.name.toLowerCase() !== data.template.name.toLowerCase());
-        return [data.template, ...withoutMatch];
-      });
+      setMealLogs((current) => [mealResult.meal!, ...current]);
       setEditorOpen(false);
-      setToast(`${draft.name} logged and saved to Personal Foods`);
+      setDraft({ ...EMPTY_DRAFT });
+      setToast(
+        saveAsTemplate
+          ? `${draft.name} logged and saved to Personal Foods`
+          : `${draft.name} added to today`,
+      );
     } catch (error) {
       setAnalysisError(
         error instanceof Error ? error.message : "The meal could not be saved.",
@@ -285,17 +439,67 @@ export function NutritionDashboard({ userName }: { userName: string }) {
   }
 
   async function quickLog(template: FoodTemplate) {
-    setTemplates((current) =>
-      current.map((item) => item.id === template.id
-        ? { ...item, usageCount: item.usageCount + 1, lastUsedAt: "Just now" }
-        : item),
-    );
-    setToast(`${template.name} added to today`);
-    fetch("/api/food-templates", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: template.id, action: "log" }),
-    }).catch(() => undefined);
+    try {
+      const mealResponse = await fetch("/api/meals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(mealPayload(template, template.id)),
+      });
+      const mealResult = (await mealResponse.json()) as {
+        meal?: MealLog;
+        error?: string;
+      };
+      if (!mealResponse.ok || !mealResult.meal) {
+        throw new Error(mealResult.error ?? "The meal could not be logged.");
+      }
+      setMealLogs((current) => [mealResult.meal!, ...current]);
+
+      const templateResponse = await fetch("/api/food-templates", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: template.id, action: "log" }),
+      });
+      if (templateResponse.ok) {
+        const result = (await templateResponse.json()) as {
+          template: FoodTemplate;
+        };
+        setTemplates((current) =>
+          current.map((item) =>
+            item.id === result.template.id ? result.template : item,
+          ),
+        );
+      }
+      setToast(`${template.name} added to today`);
+    } catch (error) {
+      setToast(
+        error instanceof Error ? error.message : "The meal could not be logged.",
+      );
+    }
+  }
+
+  async function deleteMeal(meal: MealLog) {
+    if (!window.confirm(`Delete "${meal.name}" from today's meals?`)) return;
+
+    setDeletingMealId(meal.id);
+    try {
+      const response = await fetch("/api/meals", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: meal.id }),
+      });
+      if (!response.ok) {
+        const result = (await response.json()) as { error?: string };
+        throw new Error(result.error ?? "The meal could not be deleted.");
+      }
+      setMealLogs((current) => current.filter((item) => item.id !== meal.id));
+      setToast(`${meal.name} deleted from today`);
+    } catch (error) {
+      setToast(
+        error instanceof Error ? error.message : "The meal could not be deleted.",
+      );
+    } finally {
+      setDeletingMealId("");
+    }
   }
 
   async function deleteTemplate(template: FoodTemplate) {
@@ -375,7 +579,13 @@ export function NutritionDashboard({ userName }: { userName: string }) {
         <header className="topbar">
           <div className="top-actions">
             <button className="icon-button mobile-menu" onClick={() => setMenuOpen((value) => !value)} aria-label="Toggle navigation">☰</button>
-            <div className="top-date">Sunday, July 26</div>
+            <div className="top-date">
+              {new Intl.DateTimeFormat(undefined, {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              }).format(new Date())}
+            </div>
           </div>
           <div className="top-actions">
             <button className="icon-button" onClick={() => setDark((value) => !value)} aria-label="Toggle color theme">{dark ? "☀" : "◐"}</button>
@@ -392,48 +602,60 @@ export function NutritionDashboard({ userName }: { userName: string }) {
                   <h1>Good afternoon, {userName.split(" ")[0]}.</h1>
                   <p className="heading-copy">You&apos;re on track. A protein-rich dinner will close the day well.</p>
                 </div>
-                <button className="primary-button" onClick={() => setEditorOpen(true)}>＋ Log a meal</button>
+                <button className="primary-button" onClick={openMealEditor}>＋ Log a meal</button>
               </div>
 
               <section className="summary-grid" aria-label="Daily nutrition summary">
                 <article className="card calorie-card">
                   <div>
                     <div className="card-kicker">Calories remaining</div>
-                    <div className="calorie-value">790</div>
+                    <div className="calorie-value">{caloriesRemaining.toLocaleString()}</div>
                     <div className="calorie-unit">kcal left today</div>
                     <div className="mini-stats">
-                      <div className="mini-stat"><strong>1,310</strong><span>Consumed</span></div>
-                      <div className="mini-stat"><strong>2,100</strong><span>Daily goal</span></div>
+                      <div className="mini-stat"><strong>{totals.calories.toLocaleString()}</strong><span>Consumed</span></div>
+                      <div className="mini-stat"><strong>{DAILY_CALORIE_TARGET.toLocaleString()}</strong><span>Daily goal</span></div>
                     </div>
                   </div>
-                  <div className="ring" aria-label="62 percent of calorie target consumed">
-                    <div className="ring-content"><strong>62%</strong><span>of your goal</span></div>
+                  <div
+                    className="ring"
+                    style={{ "--calorie-progress": `${caloriePercentage}%` } as CSSProperties}
+                    aria-label={`${caloriePercentage} percent of calorie target consumed`}
+                  >
+                    <div className="ring-content"><strong>{caloriePercentage}%</strong><span>of your goal</span></div>
                   </div>
                 </article>
-                <MacroCard label="Protein" value={76} target={135} unit="g" color="#3f8f65" />
-                <MacroCard label="Carbohydrates" value={161} target={235} unit="g" color="#e19a4d" />
+                <MacroCard label="Protein" value={Math.round(totals.proteinG)} target={DAILY_PROTEIN_TARGET} unit="g" color="#3f8f65" />
+                <MacroCard label="Carbohydrates" value={Math.round(totals.carbsG)} target={DAILY_CARB_TARGET} unit="g" color="#e19a4d" />
               </section>
 
               <section className="dashboard-grid">
                 <article className="card section-card">
                   <div className="card-header">
-                    <div><h2 className="card-title">Today&apos;s meals</h2><div className="card-subtitle">3 meals · 1,310 kcal</div></div>
-                    <button className="text-button" onClick={() => setEditorOpen(true)}>Add meal ＋</button>
+                    <div><h2 className="card-title">Today&apos;s meals</h2><div className="card-subtitle">{todayMeals.length} {todayMeals.length === 1 ? "meal" : "meals"} · {totals.calories.toLocaleString()} kcal</div></div>
+                    <button className="text-button" onClick={openMealEditor}>Add meal ＋</button>
                   </div>
                   <div className="meal-list">
-                    {meals.map((meal) => (
-                      <div className="meal-row" key={meal.name}>
+                    {mealLoadError ? (
+                      <div className="meal-empty error" role="alert">{mealLoadError}</div>
+                    ) : todayMeals.length ? todayMeals.map((meal) => (
+                      <div className="meal-row" key={meal.id}>
                         <div className="food-thumb" aria-hidden="true">{meal.emoji}</div>
-                        <div><div className="meal-name">{meal.name}</div><div className="meal-meta">{meal.meta}</div></div>
+                        <div><div className="meal-name">{meal.name}</div><div className="meal-meta">{new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(meal.loggedAt))} · {meal.portion}</div></div>
                         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                           <div className="meal-calories">{meal.calories}<span>kcal</span></div>
-                          <button className="more-button" onClick={() => {
-                            if (meal.name.includes("Biryani")) setDraft((current) => ({ ...current, name: meal.name, calories: meal.calories }));
-                            setEditorOpen(true);
-                          }} aria-label={`Edit ${meal.name}`}>•••</button>
+                          <button
+                            className="meal-delete"
+                            onClick={() => void deleteMeal(meal)}
+                            disabled={deletingMealId === meal.id}
+                            aria-label={`Delete ${meal.name} from today`}
+                          >
+                            {deletingMealId === meal.id ? "…" : "Delete"}
+                          </button>
                         </div>
                       </div>
-                    ))}
+                    )) : (
+                      <div className="meal-empty"><strong>No meals logged today</strong><span>Add a meal or use a Personal Food shortcut.</span></div>
+                    )}
                   </div>
                 </article>
 
@@ -447,7 +669,7 @@ export function NutritionDashboard({ userName }: { userName: string }) {
                       <div className="library-item" key={item.id}>
                         <div className="library-icon" aria-hidden="true">{item.emoji}</div>
                         <div style={{ minWidth: 0 }}><div className="library-name">{item.name}</div><div className="library-meta">{item.calories} kcal · used {item.usageCount}×</div></div>
-                        <button className="quick-add" onClick={() => quickLog(item)} aria-label={`Quick log ${item.name}`}>＋</button>
+                        <button className="quick-add" onClick={() => void quickLog(item)} aria-label={`Quick log ${item.name}`}>＋</button>
                       </div>
                     ))}
                   </div>
@@ -462,18 +684,18 @@ export function NutritionDashboard({ userName }: { userName: string }) {
                 <article className="card chart-card">
                   <div className="chart-head">
                     <div><h2 className="card-title">Weekly calories</h2><div className="card-subtitle">Your 7-day rhythm</div></div>
-                    <div className="chart-total"><strong>1,864</strong> kcal avg</div>
+                    <div className="chart-total"><strong>{weeklyAverage.toLocaleString()}</strong> kcal avg</div>
                   </div>
                   <div className="bar-chart" aria-label="Weekly calories bar chart">
-                    {bars.map((height, index) => (
-                      <div className="bar-column" key={`${days[index]}-${index}`}><div className={`bar ${index === 6 ? "today" : ""}`} style={{ height: `${height}%` }} /><div className="bar-label">{days[index]}</div></div>
+                    {weeklyCalories.map((calories, index) => (
+                      <div className="bar-column" key={weekDays[index].key}><div className={`bar ${index === 6 ? "today" : ""}`} style={{ height: `${Math.max(4, Math.min(100, Math.round(calories / DAILY_CALORIE_TARGET * 100)))}%` }} title={`${calories} kcal`} /><div className="bar-label">{weekDays[index].label}</div></div>
                     ))}
                   </div>
                 </article>
                 <article className="card health-card">
                   <div className="health-icon" aria-hidden="true">♥</div>
-                  <div className="health-title">A small sodium note</div>
-                  <p className="health-copy">Lunch was a little sodium-heavy. Choose a fresh, minimally processed dinner and keep water nearby—no need to overcorrect.</p>
+                  <div className="health-title">Today&apos;s sodium check</div>
+                  <p className="health-copy">{totals.sodiumMg > 2_300 ? "Today is above the general 2,300 mg sodium guide. A fresh, minimally processed next meal can help balance the day." : `${Math.round(totals.sodiumMg).toLocaleString()} mg logged today. Keep reviewing portions and packaged-food labels for the most accurate total.`}</p>
                 </article>
               </section>
             </>
@@ -481,7 +703,7 @@ export function NutritionDashboard({ userName }: { userName: string }) {
             <section className="library-view">
               <div className="page-heading">
                 <div><p className="eyebrow">Your shortcuts</p><h1>Personal foods</h1><p className="heading-copy">Every confirmed meal becomes faster to log next time.</p></div>
-                <button className="primary-button" onClick={() => setEditorOpen(true)}>＋ Create food</button>
+                <button className="primary-button" onClick={openMealEditor}>＋ Create food</button>
               </div>
               <div className="library-toolbar">
                 <input className="search-box" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search your meals…" aria-label="Search personal foods" />
@@ -496,7 +718,7 @@ export function NutritionDashboard({ userName }: { userName: string }) {
                       <div><strong>{item.calories}</strong>kcal</div><div><strong>{item.proteinG}g</strong>protein</div><div><strong>{item.carbsG}g</strong>carbs</div><div><strong>{item.fatG}g</strong>fat</div>
                     </div>
                     <div className="template-actions">
-                      <button className="primary-button" onClick={() => quickLog(item)}>＋ Add to today</button>
+                      <button className="primary-button" onClick={() => void quickLog(item)}>＋ Add to today</button>
                       <button
                         className="delete-button"
                         onClick={() => void deleteTemplate(item)}
@@ -573,7 +795,7 @@ export function NutritionDashboard({ userName }: { userName: string }) {
                 ))}
               </div>
               <label className="save-template-check">
-                <input type="checkbox" defaultChecked />
+                <input type="checkbox" checked={saveAsTemplate} onChange={(event) => setSaveAsTemplate(event.target.checked)} />
                 <span><strong>Save to Personal Foods</strong><span>Use these confirmed values next time instead of calling AI again.</span></span>
               </label>
               <div className="dialog-actions"><button className="secondary-button" onClick={() => setEditorOpen(false)}>Cancel</button><button className="primary-button" onClick={saveMeal} disabled={saving}>{saving ? "Saving…" : "Save meal & template"}</button></div>
@@ -587,7 +809,7 @@ export function NutritionDashboard({ userName }: { userName: string }) {
 }
 
 function MacroCard({ label, value, target, unit, color }: { label: string; value: number; target: number; unit: string; color: string }) {
-  const percentage = Math.round((value / target) * 100);
+  const percentage = Math.min(100, Math.round((value / target) * 100));
   return (
     <article className="card macro-card">
       <div>

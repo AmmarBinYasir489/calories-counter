@@ -24,10 +24,13 @@ Nourish helps users log meals from photos, review AI-estimated nutrition, and sa
 - Personal Foods library with usage count and last-used tracking
 - One-click logging for previously confirmed foods
 - Delete saved Personal Foods
+- Persistent daily meal logs with accurate calorie and macro totals
+- Delete individual meals from Today
+- Seven-day calories calculated from actual meal records
 - Per-user PostgreSQL and Storage Row Level Security
 - Responsive light and dark interfaces
 
-> The current dashboard contains representative daily and weekly visualization data. Persistent meal history, calculated user targets, and fully dynamic daily summaries are planned modules.
+> Daily and weekly totals are calculated from persisted meal records. Personalized calorie and macro targets based on the full profile calculator remain a planned module.
 
 ## How meal analysis works
 
@@ -67,6 +70,7 @@ Dependencies are pinned in `package.json` and `package-lock.json` for reproducib
 app/
 ├── api/
 │   ├── food-templates/       Personal Foods API
+│   ├── meals/                Persistent meal-log API
 │   └── meals/analyze/        Authenticated Gemini analysis API
 ├── auth/                     OAuth callback and sign-out routes
 ├── login/                    Authentication interface
@@ -75,7 +79,8 @@ app/
 └── page.tsx
 database/
 ├── supabase_personal_foods.sql
-└── supabase_meal_images.sql
+├── supabase_meal_images.sql
+└── supabase_meal_logs.sql
 lib/
 ├── ai/                       Prompt, schema, and Gemini service
 └── supabase/                 Browser, server, and proxy clients
@@ -126,6 +131,7 @@ Open **Supabase Dashboard → SQL Editor**, then run these files in order:
 
 1. `database/supabase_personal_foods.sql`
 2. `database/supabase_meal_images.sql`
+3. `database/supabase_meal_logs.sql`
 
 The first script creates:
 
@@ -141,6 +147,13 @@ The second script creates:
 - 8 MB upload limit
 - JPEG, PNG, and WebP allowlist
 - Per-user folder policies for select, insert, update, and delete
+
+The third script creates:
+
+- `public.meal_logs`
+- Ownership-based select, insert, update, and delete RLS policies
+- An indexed seven-day dashboard query path
+- A one-time backfill for Personal Foods confirmed today before meal logging existed
 
 Uploaded objects use this ownership structure:
 
@@ -198,6 +211,9 @@ The project uses Webpack mode because some managed Windows environments block na
 | `POST` | `/api/food-templates` | Required | Confirm and upsert a food template |
 | `PATCH` | `/api/food-templates` | Required | Increment usage for one-click logging |
 | `DELETE` | `/api/food-templates` | Required | Delete a saved Personal Food |
+| `GET` | `/api/meals` | Required | List the user's meals for a date range |
+| `POST` | `/api/meals` | Required | Add a meal to Today |
+| `DELETE` | `/api/meals` | Required | Delete an individual meal log |
 | `POST` | `/api/meals/analyze` | Required | Analyze a private uploaded meal image |
 | `GET` | `/auth/callback` | OAuth flow | Exchange the Supabase OAuth code |
 | `POST` | `/auth/signout` | Required | End the current session |
