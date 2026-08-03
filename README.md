@@ -10,6 +10,8 @@ AI-assisted nutrition tracking that turns confirmed meals into a reusable person
 
 Nourish helps users log meals from photos, review AI-estimated nutrition, and save confirmed meals as personal templates. Meals such as “Mom's Chicken Biryani,” “Office Lunch,” or “Breakfast Oats” become one-click shortcuts, improving logging speed while reducing repeated AI requests and cost.
 
+![Nourish nutrition dashboard preview](public/og.png)
+
 ## Current capabilities
 
 - Email/password authentication through Supabase Auth
@@ -225,6 +227,7 @@ The project uses Webpack mode because some managed Windows environments block na
 | `npm start` | Run the production build |
 | `npm run lint` | Run ESLint |
 | `npm test` | Build the app and run contract tests |
+| `npm run test:unit` | Run contract tests without rebuilding |
 
 ## API routes
 
